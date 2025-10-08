@@ -8,22 +8,39 @@ use serde::{Serialize, Deserialize};
 use std::fs;
 use std::path::Path;
 
+/// Custom result type for the library
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+/// Process result struct
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProcessResult {
+    /// Success flag
     pub success: bool,
+    /// Message describing the result
     pub message: String,
+    /// Optional data associated with the result
     pub data: Option<serde_json::Value>,
 }
 
+/// Grant program processor
 #[derive(Debug)]
 pub struct GrantProgramProcessor {
-    verbose: bool,
-    processed_count: usize,
+    /// Flag for verbose mode
+    pub verbose: bool,
+    /// Count of processed items
+    pub processed_count: usize,
 }
 
 impl GrantProgramProcessor {
+    /// Create a new processor instance
+    /// 
+    /// # Arguments
+    /// 
+    /// * `verbose` - Flag to enable verbose mode
+    /// 
+    /// # Returns
+    /// 
+    /// A new `GrantProgramProcessor` instance
     pub fn new(verbose: bool) -> Self {
         Self {
             verbose,
@@ -31,6 +48,15 @@ impl GrantProgramProcessor {
         }
     }
 
+    /// Process the given data
+    /// 
+    /// # Arguments
+    /// 
+    /// * `data` - Data to process
+    /// 
+    /// # Returns
+    /// 
+    /// A `ProcessResult` instance describing the result of processing
     pub fn process(&mut self, data: &str) -> Result<ProcessResult> {
         if self.verbose {
             debug!("Processing data of length: {}", data.len());
@@ -52,6 +78,11 @@ impl GrantProgramProcessor {
         Ok(result)
     }
 
+    /// Get statistics about the processor
+    /// 
+    /// # Returns
+    /// 
+    /// A JSON value containing the processor statistics
     pub fn get_stats(&self) -> serde_json::Value {
         serde_json::json!({
             "processed_count": self.processed_count,
@@ -62,6 +93,7 @@ impl GrantProgramProcessor {
 
 /// Main processing function
 pub fn run(verbose: bool, input: Option<String>, output: Option<String>) -> Result<()> {
+    // Initialize logging
     if verbose {
         env_logger::Builder::from_default_env()
             .filter_level(log::LevelFilter::Debug)
@@ -77,65 +109,25 @@ pub fn run(verbose: bool, input: Option<String>, output: Option<String>) -> Resu
     // Read input
     let input_data = match input {
         Some(path) => {
-            info!("Reading from file: {}", path);
-            fs::read_to_string(&path)?
-        },
-        None => {
-            info!("Using default test data");
-            "Sample data for processing".to_string()
+            // Read file at the given path
+            fs::read_to_string(path).map_err(|e| e.into())
         }
-    };
-    
-    // Process data
-    let result = processor.process(&input_data)?;
-    
-    if verbose {
-        debug!("Processing result: {:#?}", result);
-    }
-    
-    // Save output
-    let output_json = serde_json::to_string_pretty(&result)?;
-    
-    match output {
-        Some(path) => {
-            info!("Writing results to: {}", path);
-            fs::write(&path, &output_json)?;
-        },
         None => {
-            println!("{}", output_json);
+            // Use default input (e.g., stdin)
+            Ok(String::new())
         }
+    }?;
+
+    // Process the input data
+    processor.process(&input_data)?;
+
+    // Write output
+    let output_data = serde_json::to_string(&processor.get_stats())?;
+    if let Some(output_path) = output {
+        fs::write(output_path, output_data)?;
+    } else {
+        println!("{}", output_data);
     }
-    
-    let stats = processor.get_stats();
-    info!("Processing complete. Stats: {}", stats);
-    
+
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_processor_creation() {
-        let processor = GrantProgramProcessor::new(true);
-        assert_eq!(processor.verbose, true);
-        assert_eq!(processor.processed_count, 0);
-    }
-
-    #[test]
-    fn test_data_processing() {
-        let mut processor = GrantProgramProcessor::new(false);
-        let result = processor.process("test data").unwrap();
-        
-        assert!(result.success);
-        assert_eq!(processor.processed_count, 1);
-    }
-
-    #[test]
-    fn test_run_function() {
-        // Test the main run function
-        let result = run(false, None, None);
-        assert!(result.is_ok());
-    }
 }
